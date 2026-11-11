@@ -1,5 +1,99 @@
+export interface ColumnMapping {
+  target_column?: string | null;
+  vehicle_type_column?: string | null;
+  pickup_location_column?: string | null;
+  drop_location_column?: string | null;
+  booking_value_column?: string | null;
+  date_column?: string | null;
+  time_column?: string | null;
+}
+
+export interface QualityDeduction {
+  category: string;
+  impact: string;
+  points_deducted: number;
+  description: string;
+}
+
+export interface DataQualityBreakdown {
+  score: number;
+  rating: string;
+  formula: string;
+  total_records: number;
+  total_columns: number;
+  missing_cells_count: number;
+  missing_cells_percentage: number;
+  duplicate_rows_count: number;
+  duplicate_rows_percentage: number;
+  constant_columns_count: number;
+  deductions: QualityDeduction[];
+}
+
+export interface DatasetInfo {
+  id: string;
+  filename: string;
+  is_active: boolean;
+  total_rows: number;
+  total_cols: number;
+  file_size_bytes: number;
+  uploaded_at: string;
+  quality_score: number;
+  quality_rating: string;
+  columns: string[];
+  mapping: ColumnMapping;
+  has_target: boolean;
+  has_temporal: boolean;
+}
+
+export interface DatasetUploadResponse {
+  dataset_id: string;
+  filename: string;
+  total_rows: number;
+  total_cols: number;
+  file_size_bytes: number;
+  columns: string[];
+  detected_mapping: ColumnMapping;
+  quality: DataQualityBreakdown;
+  sample_records: Record<string, any>[];
+  summary: DatasetSummary;
+  message: string;
+}
+
+export interface DatasetListResponse {
+  active_dataset_id: string;
+  datasets: DatasetInfo[];
+}
+
+export interface FieldOptionsResponse {
+  vehicle_types: string[];
+  pickup_locations: string[];
+  drop_locations: string[];
+  days_of_week: string[];
+}
+
+export interface DatasetPreview {
+  filename: string;
+  dataset_id: string;
+  total_rows: number;
+  total_cols: number;
+  columns: string[];
+  column_types: Record<string, string>;
+  sample_records: Record<string, any>[];
+}
+
+export interface HealthResponse {
+  status: string;
+  service: string;
+  version: string;
+  active_dataset_id: string;
+  dataset_name: string;
+  dataset_loaded: boolean;
+  active_model: string;
+}
+
 export interface DatasetSummary {
   filename: string;
+  dataset_id?: string;
   total_bookings: number;
   successful_rides: number;
   canceled_by_driver: number;
@@ -23,6 +117,7 @@ export interface DataQuality {
   constant_columns: string[];
   status_counts: Record<string, number>;
   has_target_leakage_risks: boolean;
+  breakdown?: DataQualityBreakdown;
 }
 
 export interface LeakageAuditItem {

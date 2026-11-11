@@ -63,11 +63,12 @@ class ModelTrainer:
             X_train, X_test = X_sorted.iloc[:split_idx], X_sorted.iloc[split_idx:]
             y_train, y_test = y_sorted.iloc[:split_idx], y_sorted.iloc[split_idx:]
         else:
+            can_stratify = (y.value_counts().min() >= 2) if len(y.value_counts()) > 1 else False
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y,
                 test_size=test_size,
                 random_state=settings.RANDOM_STATE,
-                stratify=y
+                stratify=y if can_stratify else None
             )
 
         algorithms = {
@@ -85,7 +86,7 @@ class ModelTrainer:
                 max_depth=10,
                 min_samples_split=20,
                 random_state=settings.RANDOM_STATE,
-                n_jobs=-1
+                n_jobs=1
             ),
             "Gradient Boosting": GradientBoostingClassifier(
                 n_estimators=50,
@@ -117,7 +118,7 @@ class ModelTrainer:
                     "classifier__n_estimators": [80, 120],
                     "classifier__max_depth": [4, 6]
                 }
-                grid = GridSearchCV(pipeline, param_grid, cv=3, scoring="f1", n_jobs=-1)
+                grid = GridSearchCV(pipeline, param_grid, cv=3, scoring="f1", n_jobs=1)
                 grid.fit(X_train, y_train)
                 pipeline = grid.best_estimator_
                 best_params = grid.best_params_
@@ -126,7 +127,7 @@ class ModelTrainer:
                     "classifier__n_estimators": [80, 120],
                     "classifier__max_depth": [10, 14]
                 }
-                grid = GridSearchCV(pipeline, param_grid, cv=3, scoring="f1", n_jobs=-1)
+                grid = GridSearchCV(pipeline, param_grid, cv=3, scoring="f1", n_jobs=1)
                 grid.fit(X_train, y_train)
                 pipeline = grid.best_estimator_
                 best_params = grid.best_params_

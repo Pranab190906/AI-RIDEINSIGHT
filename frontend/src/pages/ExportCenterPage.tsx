@@ -120,7 +120,7 @@ export const ExportCenterPage: React.FC = () => {
       description: 'Key platform operational KPIs: booking volume, completed rides, cancellation rates, and driver-not-found deficit.',
       icon: Table,
       format: 'CSV Format',
-      action: () => (window.location.href = '/api/data/export'),
+      action: () => api.downloadFile('/data/export', 'rideinsight_dataset_summary.csv'),
     },
     {
       id: 'fingerprint',

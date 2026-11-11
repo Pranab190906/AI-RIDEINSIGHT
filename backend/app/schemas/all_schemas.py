@@ -3,15 +3,46 @@ from pydantic import BaseModel, Field
 
 # --- DATA SCHEMAS ---
 
+class ColumnMapping(BaseModel):
+    target_column: Optional[str] = "Booking_Status"
+    vehicle_type_column: Optional[str] = "Vehicle_Type"
+    pickup_location_column: Optional[str] = "Pickup_Location"
+    drop_location_column: Optional[str] = "Drop_Location"
+    booking_value_column: Optional[str] = "Booking_Value"
+    date_column: Optional[str] = "Date"
+    time_column: Optional[str] = "Time"
+
+class QualityDeduction(BaseModel):
+    category: str
+    impact: str
+    points_deducted: float
+    description: str
+
+class DataQualityBreakdown(BaseModel):
+    score: float # 0 to 100
+    rating: str # "Excellent" (90-100), "Good" (75-89), "Fair" (50-74), "Poor" (<50)
+    formula: str
+    total_records: int
+    total_columns: int
+    missing_cells_count: int
+    missing_cells_percentage: float
+    duplicate_rows_count: int
+    duplicate_rows_percentage: float
+    constant_columns_count: int
+    deductions: List[QualityDeduction]
+
 class DatasetPreviewResponse(BaseModel):
     filename: str
+    dataset_id: Optional[str] = "default"
     total_rows: int
     total_cols: int
     columns: List[str]
+    column_types: Dict[str, str] = {}
     sample_records: List[Dict[str, Any]]
 
 class DatasetSummaryResponse(BaseModel):
     filename: str
+    dataset_id: Optional[str] = "default"
     total_bookings: int
     successful_rides: int
     canceled_by_driver: int
@@ -26,6 +57,47 @@ class DatasetSummaryResponse(BaseModel):
     status_distribution: Dict[str, int]
     vehicle_distribution: Dict[str, int]
 
+class DatasetInfo(BaseModel):
+    id: str
+    filename: str
+    is_active: bool
+    total_rows: int
+    total_cols: int
+    file_size_bytes: int
+    uploaded_at: str
+    quality_score: float
+    quality_rating: str
+    columns: List[str]
+    mapping: ColumnMapping
+    has_target: bool
+    has_temporal: bool
+
+class DatasetUploadResponse(BaseModel):
+    dataset_id: str
+    filename: str
+    total_rows: int
+    total_cols: int
+    file_size_bytes: int
+    columns: List[str]
+    detected_mapping: ColumnMapping
+    quality: DataQualityBreakdown
+    sample_records: List[Dict[str, Any]]
+    summary: DatasetSummaryResponse
+    message: str
+
+class DatasetListResponse(BaseModel):
+    active_dataset_id: str
+    datasets: List[DatasetInfo]
+
+class MapColumnsRequest(BaseModel):
+    mapping: ColumnMapping
+
+class FieldOptionsResponse(BaseModel):
+    vehicle_types: List[str]
+    pickup_locations: List[str]
+    drop_locations: List[str]
+    days_of_week: List[str]
+
 class DataQualityResponse(BaseModel):
     total_records: int
     duplicate_records: int
@@ -34,6 +106,7 @@ class DataQualityResponse(BaseModel):
     constant_columns: List[str]
     status_counts: Dict[str, int]
     has_target_leakage_risks: bool
+    breakdown: Optional[DataQualityBreakdown] = None
 
 class LeakageAuditItem(BaseModel):
     feature: str

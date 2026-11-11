@@ -2,248 +2,287 @@
 ### AI-Powered Ride-Hailing Performance Optimization and Decision Intelligence Platform
 
 ![RideInsight AI 2.0 Banner](https://img.shields.io/badge/Platform-RideInsight%20AI%202.0-06B6D4?style=for-the-badge)
-![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.13-3B82F6?style=for-the-badge)
+![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11%2F3.13-3B82F6?style=for-the-badge)
 ![React](https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite%20%7C%20TypeScript-10B981?style=for-the-badge)
 ![ML](https://img.shields.io/badge/Machine%20Learning-Scikit--Learn%20%7C%20SHAP-8B5CF6?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passing-emerald?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-17%2F17%20Passing-emerald?style=for-the-badge)
+![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel%20Ready-success?style=for-the-badge)
 
 ---
 
 ## 1. Executive Summary
 
-**RideInsight AI 2.0** is an enterprise-grade mobility analytics and decision-support platform designed to diagnose, predict, and reduce booking failure friction in ride-hailing networks. By analyzing 103,024 real-world Bengaluru ride requests from July 2024, the platform answers critical operational questions:
+**RideInsight AI 2.0** is an enterprise-grade mobility analytics, machine learning, and decision-support platform designed to diagnose, predict, and reduce booking failure friction in ride-hailing networks.
 
-1. **How many bookings succeed versus fail?** (63,967 Successful [62.09%], 18,434 Canceled by Driver, 10,499 Canceled by Customer, 10,124 Driver Not Found).
+The application answers critical operational questions:
+1. **How many bookings succeed versus fail?** (63,967 Successful [62.09%], 18,434 Canceled by Driver, 10,499 Canceled by Customer, 10,124 Driver Not Found in default dataset).
 2. **What operational patterns characterize cancellations?** (Fleet tiers, pickup hotspots, rush-hour windows, and fare sensitivities).
-3. **Can machine learning anticipate cancellation risk before dispatch?** Yes, evaluated across 4 algorithms on strictly pre-booking parameters.
-4. **Why did the model assign a specific cancellation risk?** Game-theoretic feature attributions via **SHAP** (SHapley Additive exPlanations).
-5. **How many completed rides will occur in future periods?** Chronologically validated Holt Exponential Smoothing daily projections.
-6. **What is the revenue gain if cancellation rates drop?** Interactive What-If simulation with custom fleet rebalancing scenarios.
-7. **What actions should operations take?** Automated evidence-based recommendations grounded in empirical data.
+3. **Can users upload custom datasets?** Yes, via an interactive CSV drag-and-drop system with dynamic column mapping, transparent quality scoring, and dataset switching.
+4. **Can machine learning anticipate cancellation risk before dispatch?** Yes, evaluated across 4 algorithms (Logistic Regression, Decision Tree, Random Forest, Gradient Boosting) on strictly pre-booking parameters.
+5. **Why did the model assign a specific cancellation risk?** Game-theoretic feature attributions via **SHAP** (SHapley Additive exPlanations).
+6. **How many completed rides will occur in future periods?** Chronologically validated Holt Exponential Smoothing daily projections.
+7. **What is the revenue gain if cancellation rates drop?** Interactive What-If simulation with custom fleet rebalancing scenarios.
+8. **What actions should operations take?** Automated evidence-based recommendations grounded in empirical data.
 
 ---
 
 ## 2. Technology Stack & Architecture
 
 ```
-rideinsight-ai/
+RideInsight/
+├── app/                          # Root proxy package for seamless root & Render execution
+│   ├── __init__.py
+│   └── main.py                   # Re-exports backend.app.main:app
 │
 ├── frontend/                     # React 19 + TypeScript + Vite + Tailwind CSS
 │   ├── src/
-│   │   ├── components/           # Sidebar, Header, StatCard
-│   │   ├── pages/                # 11 Dedicated Pages
-│   │   ├── services/             # Typed API client
+│   │   ├── components/           # Header (with real-time API health & active dataset), Sidebar, StatCard
+│   │   ├── pages/                # 11 Dedicated Operational Modules
+│   │   ├── services/             # Typed API client with VITE_API_URL & timeout guards
 │   │   ├── types/                # Strict TypeScript interfaces
-│   │   ├── App.tsx               # Client-side router
+│   │   ├── App.tsx               # Client-side router & global state
 │   │   └── main.tsx              # Application entrypoint
+│   ├── .env.example              # VITE_API_URL configuration guide
+│   ├── vercel.json               # SPA route rewrite configuration
 │   ├── package.json
-│   └── vite.config.ts            # Proxy to http://127.0.0.1:8000
+│   └── vite.config.ts            # Local development proxy to http://127.0.0.1:8000
 │
 ├── backend/                      # FastAPI + Scikit-Learn + SHAP + SQLAlchemy
 │   ├── app/
-│   │   ├── api/                  # RESTful Routers (/data, /analysis, /models, etc.)
-│   │   ├── core/                 # App configuration & settings
-│   │   ├── data/                 # Ingestion, DataProcessor, FingerprintAnalyzer
+│   │   ├── api/                  # RESTful Routers (/data, /analysis, /models, /explain, etc.)
+│   │   ├── core/                 # App configuration (HOST, PORT, CORS)
+│   │   ├── data/                 # Dynamic DataProcessor, Dataset Registry, FingerprintAnalyzer
 │   │   ├── database/             # SQLite session & SQLAlchemy ORM models
-│   │   ├── explainability/       # Tree & Linear SHAP explainer
+│   │   ├── explainability/       # Tree & Linear SHAP explainer with domain mapping
 │   │   ├── forecasting/          # Holt ES time-series & What-If simulator
 │   │   ├── insights/             # Evidence-based recommendation engine
-│   │   ├── ml/                   # ModelTrainer, 4 algorithms, Scikit-learn pipelines
+│   │   ├── ml/                   # ModelTrainer (4 algorithms, Scikit-learn pipelines)
 │   │   ├── schemas/              # Pydantic validation schemas
 │   │   └── main.py               # FastAPI application with lifespan management
 │   ├── models/                   # Serialized joblib pipelines & comparison metadata
 │   ├── requirements.txt          # Python dependencies
-│   └── .env.example
+│   └── rideinsight.db            # SQLite persistent database
 │
-├── data/                         # Bookings.csv (103,024 records)
+├── data/                         # Bookings.csv (103,024 benchmark records)
+│   └── uploads/                  # User-uploaded custom datasets
 ├── exports/                      # Generated CSV exports
-├── tests/                        # Pytest suite (14 automated tests)
+├── tests/                        # Pytest suite (17 automated tests)
+├── render.yaml                   # Infrastructure-as-Code Render Web Service blueprint
+├── run_backend.py                # Cross-platform Python launcher
+├── start_all.ps1                 # One-click Windows PowerShell dual launcher
 └── README.md
 ```
 
-### Stack Highlights:
-- **Frontend**: React 19, Vite 8, TypeScript 7, Tailwind CSS v4, Recharts, Lucide React, React Router 7.
-- **Backend**: Python 3.13, FastAPI, Pandas, NumPy, Scikit-learn, SHAP, Joblib, SQLAlchemy ORM.
-- **Storage**: SQLite persistent store for inference logging, model metadata, and what-if scenarios.
+---
+
+## 3. Dynamic Dataset Upload & Management System
+
+Users can analyze their own ride-hailing datasets without being restricted to default data:
+
+### Upload Features:
+- **Drag-and-Drop Dropzone**: Select or drag `.csv` files up to 100MB directly on the Executive Overview.
+- **Upload Progress & Validation**: Real-time progress bar, extension checking, and path sanitation.
+- **Configurable Column Mapping**: If your CSV uses different column names (e.g. `status`, `car_type`, `fare`, `origin`, `dest`), map them in the Column Mapping modal to canonical concepts:
+  - Outcome / Cancellation Target (`target_column`)
+  - Vehicle Category (`vehicle_type_column`)
+  - Pickup Location (`pickup_location_column`)
+  - Drop Location (`drop_location_column`)
+  - Estimated Fare (`booking_value_column`)
+  - Booking Date (`date_column`)
+  - Booking Time (`time_column`)
+- **Transparent Data Quality Scorecard**:
+  Scores dataset from 0 to 100 with clear formula breakdown:
+  ```
+  Score = 100 - min(30, Missing_Cell_% × 2) - min(25, Duplicate_% × 5) - min(15, Constant_Cols × 5) - Target_Penalty(15) - Temporal_Penalty(10)
+  ```
+- **Dataset Registry & Switcher**: Easily switch between uploaded datasets and `Bookings.csv` with a single click. Downstream ML models, time-series, and fingerprints refresh dynamically!
 
 ---
 
-## 3. Dataset Characteristics (Bookings.csv)
+## 4. Machine Learning & Anti-Leakage Protocol
 
-The system is tested against the primary dataset `Bookings.csv`:
-- **Total Records**: 103,024 rows
-- **Columns**: 21 original columns
-- **Date Range**: July 1 to July 31, 2024 (Bengaluru, India)
-- **Status Distribution**:
-  - `Success`: 63,967 (62.09%)
-  - `Canceled by Driver`: 18,434 (17.89%)
-  - `Canceled by Customer`: 10,499 (10.19%)
-  - `Driver Not Found`: 10,124 (9.83%)
-- **Vehicle Types**: Prime Sedan, eBike, Auto, Prime Plus, Bike, Prime SUV, Mini
-- **Mean Booking Value**: ₹439.50
+### Evaluated Algorithms:
+1. **Logistic Regression** (L2 Regularized, dual probability calibration)
+2. **Decision Tree** (Constrained depth, min split 20 to prevent overfitting)
+3. **Random Forest** (Ensemble of 50 trees, max depth 10)
+4. **Gradient Boosting** (50 estimators, learning rate 0.1, depth 4)
 
----
+### Anti-Target Leakage Guarantee:
+Features strictly restricted to information available at the exact instant a ride request is initiated:
 
-## 4. Anti-Target Leakage & Preprocessing Protocol
+| Included Feature | Prediction Time Availability |
+| :--- | :--- |
+| `Vehicle_Type` | Selected by customer during request |
+| `Pickup_Location` | GPS pickup pin at request creation |
+| `Drop_Location` | Destination pin entered by customer |
+| `Booking_Value` | Quoted base fare displayed before confirmation |
+| `Booking_Hour` & `Minute` | System timestamp when request is submitted |
+| `Day_Of_Week` & `Is_Weekend` | Calendar features of booking initiation |
 
-### Excluded Leaked Features:
-To ensure the machine learning pipeline is strictly deployable at the moment of ride request, the following attributes are **strictly excluded**:
-
-| Feature | Category | Rationale |
-| :--- | :--- | :--- |
-| `Ride_Distance` | Target Leakage | Strictly 0 for cancelled trips; >0 only for completed trips. |
-| `Booking_Status` | Target Variable | Ground truth outcome. |
-| `Booking_ID`, `Customer_ID` | Identifiers | Non-generalizable unique IDs; prevents overfitting. |
-| `Canceled_Rides_by_Driver` | Post-Outcome | Contains driver cancellation reason logged post-cancellation. |
-| `Canceled_Rides_by_Customer` | Post-Outcome | Contains customer cancellation reason logged post-cancellation. |
-| `Incomplete_Rides` / Reason | Post-Dispatch | Only recorded if a trip is aborted mid-journey. |
-| `Payment_Method` | Post-Trip | Recorded only upon settlement; missing for 100% of cancellations. |
-| `Driver_Ratings` / `Customer_Rating` | Post-Trip | Reviews submitted after trip completion. |
-| `V_TAT` / `C_TAT` | Post-Dispatch | Vehicle and customer turnaround time only exist after assignment. |
-| `Vehicle Images`, `Unnamed: 20` | Artifacts | Malformed formulas and trailing commas. |
-
-### Included Pre-Booking Features (8):
-- `Vehicle_Type`: Category requested.
-- `Pickup_Location`: Origin zone.
-- `Drop_Location`: Destination zone.
-- `Booking_Value`: Estimated upfront fare (₹).
-- `Booking_Hour`: Hour of request (0–23).
-- `Booking_Minute`: Minute of request (0–59).
-- `Day_Of_Week`: Day name (Monday–Sunday).
-- `Is_Weekend`: Binary flag (0 or 1).
-
-### Binary Classification Formulation:
-- **Class 0 (Success)**: 63,967 completed rides.
-- **Class 1 (Cancelled)**: 28,933 cancellations (Driver + Customer).
-- **Driver Not Found (10,124)**: Kept separate as a pre-assignment supply exhaustion event rather than an assigned dispatch cancellation.
-- **Baseline Cancellation Rate**: `28,933 / (63,967 + 28,933) = 31.14%`.
+**Strictly Excluded Post-Booking Features**: `Ride_Distance` (0 for cancellations, positive only for completed rides; creates artificial 100% leakage), `V_TAT` / `C_TAT` (recorded only post-dispatch), `Driver_Ratings`, `Customer_Rating`, `Payment_Method` (missing for 100% of cancellations), and cancellation reason codes.
 
 ---
 
-## 5. Machine Learning Suite
+## 5. Local Setup & Execution Guide
 
-The Model Lab benchmarks four distinct algorithms on identical test sets:
-1. **Logistic Regression** (Linear baseline with StandardScaler)
-2. **Decision Tree** (Non-linear rule partitioner)
-3. **Random Forest** (Ensemble bagging classifier, `n_estimators=50`)
-4. **Gradient Boosting** (Sequential gradient boosting, `n_estimators=50`, learning rate 0.1)
+### Prerequisites:
+- Python 3.10 to 3.13
+- Node.js 18+ and npm
+- Windows PowerShell or Bash (Linux / macOS)
 
-### Evaluation Features:
-- **Random Stratified Split** vs. **Chronological Time-Ordered Split**.
-- **Metrics Tracked**: Accuracy, Precision, Recall, F1-Score, ROC-AUC, Training Latency.
-- **Confusion Matrix**: Full breakdown of TN, FP, FN, TP.
-- **Model Selection Justification**: Recommends the model maximizing the harmonic balance (F1-score & ROC-AUC) to minimize false-positive driver reallocations.
-
----
-
-## 6. Installation & Execution Guide (Windows 11)
-
-### Quick Start (One-Click Launcher)
-In PowerShell from the project root:
+### Quick One-Click Launch (Windows):
+From the project root:
 ```powershell
-cd c:\Users\prajw\Downloads\ride
 .\start_all.ps1
 ```
-This automatically launches both the **FastAPI Backend** (`http://127.0.0.1:8000`) and the **React Frontend** (`http://localhost:5173`) in their own dedicated windows.
+This automatically launches both the FastAPI backend (http://127.0.0.1:8000) and the Vite frontend (http://localhost:5173) in separate windows.
 
 ---
 
-### Manual Launch (Two Terminals)
+### Manual Launch (Step-by-Step):
 
-### Terminal 1: Backend Setup & Execution
-Open PowerShell in the project directory:
+#### 1. Backend Setup:
 ```powershell
-# Navigate to workspace
+# Navigate to project root
 cd c:\Users\prajw\Downloads\ride
 
-# Activate Python virtual environment
+# Activate virtual environment
 .\backend\venv\Scripts\Activate.ps1
+# (or on Linux/macOS: source backend/venv/bin/activate)
 
-# Install dependencies (if not already installed)
-pip install -r .\backend\requirements.txt
+# Install dependencies if needed
+pip install -r requirements.txt
 
-# Run backend API server (Option 1 - Easiest):
+# Start backend server
 python run_backend.py
-
-# OR (Option 2 - Directly with uvicorn):
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-
-# OR (Option 3 - From backend directory):
-cd backend
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# (Alternative: uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload)
 ```
-The FastAPI backend will start at: `http://127.0.0.1:8000`  
-Swagger API Docs available at: `http://127.0.0.1:8000/docs`
+Verify backend is online at:
+- Service Info: http://127.0.0.1:8000/
+- Health Check: http://127.0.0.1:8000/api/health
+- Swagger Docs: http://127.0.0.1:8000/docs
 
-
-### Terminal 2: Frontend Setup & Execution
-Open a second PowerShell window:
+#### 2. Frontend Setup:
+In a separate terminal window:
 ```powershell
-# Navigate to frontend directory
 cd c:\Users\prajw\Downloads\ride\frontend
 
-# Install dependencies (if not already installed)
+# Install node dependencies
 npm install
 
-# Start Vite development server
+# Start Vite dev server
 npm run dev
 ```
-Open your browser at: `http://localhost:5173`
+Open **http://localhost:5173** in your browser.
 
 ---
 
-## 7. Running Automated Test Suite
+## 6. Running Automated Tests
 
-To verify all 14 end-to-end integration tests:
+Run the full backend test suite:
 ```powershell
-cd c:\Users\prajw\Downloads\ride
-.\backend\venv\Scripts\pytest.exe -v tests/test_backend.py
+.\backend\venv\Scripts\python.exe -m pytest tests/test_backend.py -v
 ```
-**Test Coverage**:
-- Dataset ingestion & UTF-8-BOM handling
-- Data quality & missing value calculations
-- Target leakage audit exclusions
-- Cancellation fingerprint math & analytical score
-- Machine learning pipeline training & inference
-- SHAP global feature importances & local attributions
-- Holt exponential smoothing daily forecasting
+All **17 tests** verify:
+- Health check & dataset summary
+- Data quality & transparent scoring calculation
+- Data leakage prevention audit
+- Executive overview & daily trajectory
+- Cancellation fingerprint analysis across 5 dimensions
+- Multi-algorithm training & model comparison
+- Single-booking real-time inference
+- Global & local SHAP explainability
+- Holt exponential smoothing forecasting
 - What-If scenario simulations
-- SQLite monitoring & ground-truth outcome logging
+- AI recommendations engine
+- File upload validation & full dataset lifecycle (upload, map columns, switch, delete)
 
 ---
 
-## 8. REST API Reference
+## 7. Production Cloud Deployment
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/health` | Health status and dataset state |
-| `POST` | `/api/data/upload` | Upload and validate new CSV |
-| `GET` | `/api/data/summary` | Overall dataset metrics |
-| `GET` | `/api/data/quality` | Missing values and duplicate inspection |
-| `GET` | `/api/data/leakage-audit` | Pre-booking feature inclusion/exclusion audit |
-| `GET` | `/api/data/export` | Download dataset summary CSV |
-| `GET` | `/api/analysis/overview` | Executive daily trends and status breakdowns |
-| `GET` | `/api/analysis/fingerprint` | Segment cancellation rates and friction scores |
-| `POST` | `/api/models/train` | Train and evaluate the 4 ML models |
-| `GET` | `/api/models/compare` | Fetch side-by-side benchmark comparison |
-| `POST` | `/api/models/predict` | Real-time cancellation risk inference |
-| `POST` | `/api/models/select-active` | Switch active deployed model |
-| `GET` | `/api/explain/shap-global` | Global SHAP feature importance rankings |
-| `POST` | `/api/explain/shap-local` | Individual booking SHAP contribution breakdown |
-| `GET` | `/api/forecast/daily` | Daily demand forecast with horizon selector |
-| `POST` | `/api/scenarios/simulate` | What-If operational reduction simulation |
-| `GET` | `/api/scenarios/list` | List saved scenarios |
-| `GET` | `/api/insights/recommendations` | Evidence-based actionable recommendations |
-| `GET` | `/api/monitoring/summary` | Real-time prediction logs & accuracy |
-| `POST` | `/api/monitoring/record-outcome` | Submit ground-truth ride outcome |
+### A. Deploy Backend to Render (Web Service)
+
+1. **Push your repository to GitHub**:
+   ```bash
+   git add .
+   git commit -m "Prepare RideInsight AI 2.0 for Render and Vercel deployment"
+   git push origin main
+   ```
+2. **Create Web Service on Render**:
+   - Go to [dashboard.render.com](https://dashboard.render.com/) and click **New + > Web Service**.
+   - Connect your GitHub repository: `https://github.com/Pranab190906/RideInsight`.
+   - **Environment**: `Python 3`
+   - **Root Directory**: Leave blank (uses repo root) OR enter `backend`.
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Health Check Path**: `/api/health`
+3. **Environment Variables**:
+   | Key | Value | Notes |
+   | :--- | :--- | :--- |
+   | `PYTHON_VERSION` | `3.11.10` | Render Python version |
+   | `HOST` | `0.0.0.0` | Bind to all external interfaces |
+   | `PORT` | `10000` | Render dynamically assigns port |
+   | `DEBUG` | `False` | Disable dev reload in production |
+   | `CORS_ORIGINS` | `*` or your Vercel URL | Allows frontend requests |
+4. Click **Deploy Web Service**.
+5. Copy your live Render URL (e.g. `https://rideinsight-api.onrender.com`).
+
+---
+
+### B. Deploy Frontend to Vercel
+
+1. **Import Project on Vercel**:
+   - Go to [vercel.com/new](https://vercel.com/new).
+   - Select your GitHub repository: `Pranab190906/RideInsight`.
+   - Set **Root Directory** to `frontend`.
+   - **Framework Preset**: `Vite`.
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+2. **Environment Variable**:
+   | Key | Value |
+   | :--- | :--- |
+   | `VITE_API_URL` | `https://YOUR-RENDER-BACKEND-URL.onrender.com` |
+3. Click **Deploy**.
+4. Vercel will build and assign your production frontend domain (e.g. `https://rideinsight-ai.vercel.app`).
+5. Update `CORS_ORIGINS` on your Render service to include your Vercel domain.
 
 ---
 
-## 9. Academic & Technical Disclosures
+## 8. Dashboard Modules Reference
 
-1. **Correlation vs. Causation**: High cancellation rates observed in particular pickup hubs (e.g. Tumkur Road) reflect operational correlation with traffic bottlenecks, accessibility, or driver supply deficits, not direct vehicle/passenger causality.
-2. **Time-Series Horizon Limitation**: With 31 days of historical data (July 2024), long-range annual seasonal decomposition cannot be mathematically confirmed. The Holt Exponential Smoothing model is intended as a validated short-horizon pacing tool (7–30 days).
-3. **What-If Simulations**: Scenario projections operate under the analytical assumption of demand volume stability. Operational interventions should be validated via randomized A/B pilot tests.
+| # | Module | Core Functionality |
+| :---: | :--- | :--- |
+| **1** | **Executive Overview** | Dataset upload hub, column mapping, quality score, KPIs, and daily volume trends. |
+| **2** | **Cancellation Fingerprint** | Multi-dimensional friction analyzer across vehicle, pickup, drop, hour, and day. |
+| **3** | **ML Model Lab** | Standardized benchmarking across Logistic Regression, Decision Tree, Random Forest, Gradient Boosting. |
+| **4** | **Smart Risk Prediction** | Pre-booking real-time inference with calibrated threshold slider and dynamic city dropdowns. |
+| **5** | **Explainable AI (SHAP)** | Tree & Linear SHAP game-theoretic attribution with domain-level impact explanations. |
+| **6** | **Ride Forecasting** | Double exponential smoothing time-series with backtested RMSE and 95% confidence intervals. |
+| **7** | **What-If Simulator** | Sensitivity analysis simulating the gain in completed rides from operational reductions. |
+| **8** | **AI Recommendations** | Automated, evidence-grounded action items with data proofs and confidence ratings. |
+| **9** | **Data Leakage Audit** | Detailed audit matrix of included pre-booking features and excluded post-outcome variables. |
+| **10** | **Model Monitoring** | Operational inference logs, outcome feedback recording, and empirical drift monitoring. |
+| **11** | **Export Center** | One-click audit-ready CSV downloads for all reports, models, forecasts, and recommendations. |
 
 ---
-**RideInsight AI 2.0** • Mobility Intelligence & Performance Optimization
+
+## 9. Verification Checklist
+
+- [x] Backend tests: 17/17 passing (`pytest tests/test_backend.py`)
+- [x] Frontend build: compiled with 0 errors in 1.32s (`npm run build`)
+- [x] Dynamic dataset upload with CSV validation and progress bar
+- [x] Configurable column mapping for non-standard CSVs
+- [x] Transparent data quality scoring with mathematical deduction breakdown
+- [x] Pre-booking inference free from target leakage
+- [x] Real-time backend connectivity detection with status indicator
+- [x] Dynamic field options loaded from active dataset
+- [x] Blob downloads for CSV export center
+- [x] Render configuration (`render.yaml`, `$PORT` binding, root proxy `app/`)
+- [x] Vercel configuration (`vercel.json`, `VITE_API_URL` environment support)
+
+---
+
+## 10. License
+
+Developed for enterprise ride-hailing performance optimization and decision intelligence. All rights reserved.

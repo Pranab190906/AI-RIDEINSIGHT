@@ -95,6 +95,8 @@ def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
+        "active_dataset_id": processor.active_dataset_id,
+        "dataset_name": processor.csv_path.name,
         "dataset_loaded": processor._df is not None,
         "active_model": trainer.active_model_name
     }

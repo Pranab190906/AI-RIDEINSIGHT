@@ -12,49 +12,145 @@ import {
   ForecastResponse,
   ScenarioResult,
   RecommendationsResponse,
-  MonitoringSummary
+  MonitoringSummary,
+  DatasetListResponse,
+  DatasetInfo,
+  DatasetUploadResponse,
+  ColumnMapping,
+  FieldOptionsResponse,
+  DatasetPreview,
+  HealthResponse
 } from '../types';
 
-const API_BASE = '/api';
+// Resolve API base URL dynamically from environment variable for Vercel/Render deployment
+const ENV_BACKEND = import.meta.env.VITE_API_URL || '';
+export const API_BASE = ENV_BACKEND ? `${ENV_BACKEND.replace(/\/$/, '')}/api` : '/api';
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || `Request failed with status ${res.status}`);
+/**
+ * Standard HTTP fetcher with timeout and human-readable network error messages.
+ */
+async function fetchWithTimeout<T>(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 45000
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      let detailMsg = res.statusText;
+      try {
+        const errorJson = await res.json();
+        detailMsg = errorJson.detail || detailMsg;
+      } catch {
+        // Non-JSON response
+      }
+      throw new Error(detailMsg || `Server responded with HTTP ${res.status}`);
+    }
+
+    return (await res.json()) as T;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+
+    if (err.name === 'AbortError') {
+      throw new Error(
+        `Request to ${url} timed out after ${Math.round(timeoutMs / 1000)}s. The backend server might be performing initial ML training or starting up. Click 'Retry Connection' to reconnect.`
+      );
+    }
+
+    // Network / connection refused / DNS errors
+    if (err.message === 'Failed to fetch' || err.message?.includes('NetworkError') || err.message?.includes('ECONNREFUSED')) {
+      throw new Error(
+        `Unable to reach RideInsight AI backend (${API_BASE}). Ensure the FastAPI server is running (e.g. 'python run_backend.py') and that CORS allows this origin.`
+      );
+    }
+
+    throw err;
   }
-  return res.json();
 }
 
 export const api = {
-  // Data APIs
+  // --- HEALTH & STATUS ---
+  getHealth: (): Promise<HealthResponse> =>
+    fetchWithTimeout<HealthResponse>(`${API_BASE}/health`, {}, 8000),
+
+  // --- DATA & DATASET MANAGEMENT ---
   getSummary: (): Promise<DatasetSummary> =>
-    fetch(`${API_BASE}/data/summary`).then(handleResponse<DatasetSummary>),
+    fetchWithTimeout<DatasetSummary>(`${API_BASE}/data/summary`),
 
   getQuality: (): Promise<DataQuality> =>
-    fetch(`${API_BASE}/data/quality`).then(handleResponse<DataQuality>),
+    fetchWithTimeout<DataQuality>(`${API_BASE}/data/quality`),
 
   getLeakageAudit: (): Promise<LeakageAudit> =>
-    fetch(`${API_BASE}/data/leakage-audit`).then(handleResponse<LeakageAudit>),
+    fetchWithTimeout<LeakageAudit>(`${API_BASE}/data/leakage-audit`),
 
-  uploadCsv: (file: File): Promise<DatasetSummary> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return fetch(`${API_BASE}/data/upload`, {
+  getDatasets: (): Promise<DatasetListResponse> =>
+    fetchWithTimeout<DatasetListResponse>(`${API_BASE}/data/datasets`),
+
+  getDataset: (id: string): Promise<DatasetInfo> =>
+    fetchWithTimeout<DatasetInfo>(`${API_BASE}/data/datasets/${encodeURIComponent(id)}`),
+
+  activateDataset: (
+    id: string
+  ): Promise<{ status: string; active_dataset_id: string; summary: DatasetSummary }> =>
+    fetchWithTimeout<{ status: string; active_dataset_id: string; summary: DatasetSummary }>(
+      `${API_BASE}/data/datasets/${encodeURIComponent(id)}/activate`,
+      { method: 'POST' }
+    ),
+
+  mapColumns: (id: string, mapping: ColumnMapping): Promise<any> =>
+    fetchWithTimeout<any>(`${API_BASE}/data/datasets/${encodeURIComponent(id)}/map-columns`, {
       method: 'POST',
-      body: formData,
-    }).then(handleResponse<DatasetSummary>);
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapping }),
+    }),
+
+  deleteDataset: (id: string): Promise<{ status: string; message: string }> =>
+    fetchWithTimeout<{ status: string; message: string }>(
+      `${API_BASE}/data/datasets/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    ),
+
+  getFieldOptions: (): Promise<FieldOptionsResponse> =>
+    fetchWithTimeout<FieldOptionsResponse>(`${API_BASE}/data/field-options`),
+
+  getPreview: (limit: number = 20, dataset_id?: string): Promise<DatasetPreview> => {
+    const url = dataset_id
+      ? `${API_BASE}/data/preview?limit=${limit}&dataset_id=${encodeURIComponent(dataset_id)}`
+      : `${API_BASE}/data/preview?limit=${limit}`;
+    return fetchWithTimeout<DatasetPreview>(url);
   },
 
-  // Analysis APIs
+  uploadCsv: (file: File): Promise<DatasetUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchWithTimeout<DatasetUploadResponse>(
+      `${API_BASE}/data/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      90000 // 90s for large CSV uploads and initial quality scoring
+    );
+  },
+
+  // --- ANALYSIS & FINGERPRINT ---
   getOverview: (): Promise<ExecutiveOverview> =>
-    fetch(`${API_BASE}/analysis/overview`).then(handleResponse<ExecutiveOverview>),
+    fetchWithTimeout<ExecutiveOverview>(`${API_BASE}/analysis/overview`),
 
   getFingerprint: (): Promise<CancellationFingerprint> =>
-    fetch(`${API_BASE}/analysis/fingerprint`).then(handleResponse<CancellationFingerprint>),
+    fetchWithTimeout<CancellationFingerprint>(`${API_BASE}/analysis/fingerprint`),
 
-  // Model APIs
+  // --- MODEL LAB & PREDICTION ---
   getModelComparison: (): Promise<ModelComparison> =>
-    fetch(`${API_BASE}/models/compare`).then(handleResponse<ModelComparison>),
+    fetchWithTimeout<ModelComparison>(`${API_BASE}/models/compare`),
 
   trainModels: (params: {
     split_type: string;
@@ -62,52 +158,55 @@ export const api = {
     tune_hyperparameters: boolean;
     selected_algorithms?: string[];
   }): Promise<ModelComparison> =>
-    fetch(`${API_BASE}/models/train`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    }).then(handleResponse<ModelComparison>),
+    fetchWithTimeout<ModelComparison>(
+      `${API_BASE}/models/train`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      120000 // 120s for full multi-model ML training
+    ),
 
   selectActiveModel: (model_name: string): Promise<{ status: string; active_model: string }> =>
-    fetch(`${API_BASE}/models/select-active?model_name=${encodeURIComponent(model_name)}`, {
-      method: 'POST',
-    }).then(handleResponse<{ status: string; active_model: string }>),
+    fetchWithTimeout<{ status: string; active_model: string }>(
+      `${API_BASE}/models/select-active?model_name=${encodeURIComponent(model_name)}`,
+      { method: 'POST' }
+    ),
 
   predict: (req: PredictRequest): Promise<PredictResponse> =>
-    fetch(`${API_BASE}/models/predict`, {
+    fetchWithTimeout<PredictResponse>(`${API_BASE}/models/predict`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
-    }).then(handleResponse<PredictResponse>),
+    }),
 
-  // Explainability
+  // --- EXPLAINABILITY (SHAP) ---
   getShapGlobal: (model_name?: string): Promise<ShapGlobalResponse> => {
     const url = model_name
       ? `${API_BASE}/explain/shap-global?model_name=${encodeURIComponent(model_name)}`
       : `${API_BASE}/explain/shap-global`;
-    return fetch(url).then(handleResponse<ShapGlobalResponse>);
+    return fetchWithTimeout<ShapGlobalResponse>(url, {}, 45000);
   },
 
   getShapLocal: (req: PredictRequest, model_name?: string): Promise<ShapLocalResponse> => {
     const url = model_name
       ? `${API_BASE}/explain/shap-local?model_name=${encodeURIComponent(model_name)}`
       : `${API_BASE}/explain/shap-local`;
-    return fetch(url, {
+    return fetchWithTimeout<ShapLocalResponse>(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
-    }).then(handleResponse<ShapLocalResponse>);
+    });
   },
 
-  // Forecasting
+  // --- FORECASTING ---
   getForecast: (horizon_days: number = 7): Promise<ForecastResponse> =>
-    fetch(`${API_BASE}/forecast/daily?horizon_days=${horizon_days}`).then(
-      handleResponse<ForecastResponse>
-    ),
+    fetchWithTimeout<ForecastResponse>(`${API_BASE}/forecast/daily?horizon_days=${horizon_days}`),
 
-  // Scenarios
+  // --- SCENARIOS ---
   getScenarios: (): Promise<ScenarioResult[]> =>
-    fetch(`${API_BASE}/scenarios/list`).then(handleResponse<ScenarioResult[]>),
+    fetchWithTimeout<ScenarioResult[]>(`${API_BASE}/scenarios/list`),
 
   simulateScenario: (params: {
     name: string;
@@ -116,31 +215,45 @@ export const api = {
     proposed_reduction_percent: number;
     notes?: string;
   }): Promise<ScenarioResult> =>
-    fetch(`${API_BASE}/scenarios/simulate`, {
+    fetchWithTimeout<ScenarioResult>(`${API_BASE}/scenarios/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }).then(handleResponse<ScenarioResult>),
+    }),
 
   resetScenarios: (): Promise<ScenarioResult[]> =>
-    fetch(`${API_BASE}/scenarios/reset`, { method: 'POST' }).then(
-      handleResponse<ScenarioResult[]>
-    ),
+    fetchWithTimeout<ScenarioResult[]>(`${API_BASE}/scenarios/reset`, { method: 'POST' }),
 
-  // Insights
+  // --- INSIGHTS ---
   getRecommendations: (): Promise<RecommendationsResponse> =>
-    fetch(`${API_BASE}/insights/recommendations`).then(
-      handleResponse<RecommendationsResponse>
-    ),
+    fetchWithTimeout<RecommendationsResponse>(`${API_BASE}/insights/recommendations`),
 
-  // Monitoring
+  // --- MONITORING ---
   getMonitoringSummary: (): Promise<MonitoringSummary> =>
-    fetch(`${API_BASE}/monitoring/summary`).then(handleResponse<MonitoringSummary>),
+    fetchWithTimeout<MonitoringSummary>(`${API_BASE}/monitoring/summary`),
 
   recordOutcome: (prediction_id: number, actual_outcome: string) =>
-    fetch(`${API_BASE}/monitoring/record-outcome`, {
+    fetchWithTimeout<{ status: string }>(`${API_BASE}/monitoring/record-outcome`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prediction_id, actual_outcome }),
-    }).then(handleResponse<{ status: string }>),
+    }),
+
+  // --- EXPORT DOWNLOAD HELPER ---
+  downloadFile: async (endpoint: string, defaultFilename: string): Promise<void> => {
+    const targetUrl = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+    const res = await fetch(targetUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to download report (HTTP ${res.status})`);
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = defaultFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  },
 };

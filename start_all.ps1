@@ -5,6 +5,19 @@ Write-Host "======================================================" -ForegroundC
 Write-Host "       RIDEINSIGHT AI 2.0 - FULL STACK LAUNCHER       " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 
+# Ensure port 8000 is free by terminating any orphaned processes
+$port8000 = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+if ($port8000) {
+    Write-Host "`nCleaning up previous backend process on port 8000..." -ForegroundColor Yellow
+    $pids = $port8000 | Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($p in $pids) {
+        if ($p -gt 0) {
+            Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Start-Sleep -Milliseconds 500
+}
+
 Write-Host "`n[1/2] Launching FastAPI Backend on http://127.0.0.1:8000..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; .\backend\venv\Scripts\Activate.ps1; python run_backend.py"
 

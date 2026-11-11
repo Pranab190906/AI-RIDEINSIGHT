@@ -52,6 +52,10 @@ const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 export const PredictionPage: React.FC = () => {
   const navigate = useNavigate();
 
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(VEHICLE_TYPES);
+  const [pickupOptions, setPickupOptions] = useState<string[]>(KNOWN_LOCATIONS);
+  const [dropOptions, setDropOptions] = useState<string[]>(KNOWN_LOCATIONS);
+
   // Form State
   const [bookingTime, setBookingTime] = useState<string>('14:30');
   const [dayOfWeek, setDayOfWeek] = useState<string>('Friday');
@@ -64,6 +68,29 @@ export const PredictionPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    api.getFieldOptions().then((opts) => {
+      if (opts.vehicle_types?.length) {
+        setVehicleOptions(opts.vehicle_types);
+        if (!opts.vehicle_types.includes(vehicleType)) {
+          setVehicleType(opts.vehicle_types[0]);
+        }
+      }
+      if (opts.pickup_locations?.length) {
+        setPickupOptions(opts.pickup_locations);
+        if (!opts.pickup_locations.includes(pickupLocation)) {
+          setPickupLocation(opts.pickup_locations[0]);
+        }
+      }
+      if (opts.drop_locations?.length) {
+        setDropOptions(opts.drop_locations);
+        if (!opts.drop_locations.includes(dropLocation)) {
+          setDropLocation(opts.drop_locations[Math.min(1, opts.drop_locations.length - 1)]);
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   const handlePredict = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,7 +204,7 @@ export const PredictionPage: React.FC = () => {
                   onChange={(e) => setVehicleType(e.target.value)}
                   className="w-full bg-[#0D1322] border border-[#1E293B] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-cyan-500"
                 >
-                  {VEHICLE_TYPES.map((v) => (
+                  {vehicleOptions.map((v) => (
                     <option key={v} value={v}>
                       {v}
                     </option>
@@ -213,7 +240,7 @@ export const PredictionPage: React.FC = () => {
                   onChange={(e) => setPickupLocation(e.target.value)}
                   className="w-full bg-[#0D1322] border border-[#1E293B] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-cyan-500"
                 >
-                  {KNOWN_LOCATIONS.map((loc) => (
+                  {pickupOptions.map((loc) => (
                     <option key={`p-${loc}`} value={loc}>
                       {loc}
                     </option>
@@ -232,7 +259,7 @@ export const PredictionPage: React.FC = () => {
                   onChange={(e) => setDropLocation(e.target.value)}
                   className="w-full bg-[#0D1322] border border-[#1E293B] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-cyan-500"
                 >
-                  {KNOWN_LOCATIONS.map((loc) => (
+                  {dropOptions.map((loc) => (
                     <option key={`d-${loc}`} value={loc}>
                       {loc}
                     </option>

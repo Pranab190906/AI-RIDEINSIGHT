@@ -49,7 +49,7 @@ export const DataAuditPage: React.FC = () => {
     setError(null);
     try {
       const res = await api.uploadCsv(file);
-      setUploadMessage(`Successfully uploaded and validated ${res.filename} (${res.total_bookings.toLocaleString()} records).`);
+      setUploadMessage(`Successfully uploaded and validated ${res.filename} (${res.total_rows.toLocaleString()} records).`);
       await loadAuditData();
     } catch (err: any) {
       setError(err.message || 'CSV upload failed.');
