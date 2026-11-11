@@ -21,83 +21,61 @@ from app.api.insight_routes import router as insight_router
 from app.api.monitoring_routes import router as monitoring_router
 
 
-# --------------------------------------------------
-# Logging configuration
-# --------------------------------------------------
-
+# Logging
 logging.basicConfig(level=logging.INFO)
-
 logger = logging.getLogger("rideinsight")
 
 
-# --------------------------------------------------
 # Application startup and shutdown
-# --------------------------------------------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
     logger.info("Starting RideInsight AI...")
 
-    # Create database tables
+    # Initialize database
     try:
         logger.info("Initializing database schema...")
         Base.metadata.create_all(bind=engine)
-        logger.info("Database schema initialized successfully.")
+        logger.info("Database initialized successfully.")
 
-    except Exception as e:
-        logger.exception("Database initialization failed: %s", e)
+    except Exception:
+        logger.exception("Database initialization failed.")
 
     # Load default dataset
     try:
         if settings.DEFAULT_CSV_PATH.exists():
 
             logger.info(
-                "Loading initial dataset from %s...",
+                "Loading default dataset: %s",
                 settings.DEFAULT_CSV_PATH
             )
 
             processor.load_raw_data()
 
-            logger.info("Dataset successfully loaded into memory.")
+            logger.info("Default dataset loaded successfully.")
 
         else:
             logger.warning(
-                "Default dataset not found at %s. "
-                "Upload a dataset using /api/data/upload.",
-                settings.DEFAULT_CSV_PATH
+                "Default dataset not found. "
+                "Upload a CSV through /api/data/upload."
             )
 
-    except Exception as e:
-        logger.exception("Dataset loading failed: %s", e)
+    except Exception:
+        logger.exception("Default dataset loading failed.")
 
-    # Initialize baseline ML models if needed
-    try:
-        active_model_file = (
-            settings.MODELS_DIR / "active_model.joblib"
+    # Do not train models during startup.
+    # Model training should be explicitly triggered through the API.
+    active_model_file = (
+        settings.MODELS_DIR / "active_model.joblib"
+    )
+
+    if active_model_file.exists():
+        logger.info("Existing trained model detected.")
+    else:
+        logger.warning(
+            "No trained model detected. "
+            "Use the model training API to train models."
         )
-
-        if not active_model_file.exists():
-
-            logger.info(
-                "No pre-trained model detected. "
-                "Training baseline models..."
-            )
-
-            trainer.train_and_evaluate_all(
-                split_type="random",
-                test_size=0.20
-            )
-
-            logger.info(
-                "Baseline ML models successfully trained and persisted."
-            )
-
-        else:
-            logger.info("Existing trained model detected.")
-
-    except Exception as e:
-        logger.exception("Initial model training failed: %s", e)
 
     logger.info("RideInsight AI startup completed.")
 
@@ -106,10 +84,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down RideInsight AI...")
 
 
-# --------------------------------------------------
-# FastAPI application
-# --------------------------------------------------
-
+# Create FastAPI application
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -121,14 +96,9 @@ app = FastAPI(
 )
 
 
-# --------------------------------------------------
 # CORS configuration
-# --------------------------------------------------
-
-# Start with origins configured in application settings.
 origins = list(settings.CORS_ORIGINS)
 
-# Add deployed frontend and local development frontend.
 required_origins = [
     "https://ai-rideinsight32.onrender.com",
     "http://localhost:5173",
@@ -151,55 +121,18 @@ app.add_middleware(
 logger.info("CORS allowed origins: %s", origins)
 
 
-# --------------------------------------------------
 # Register API routers
-# --------------------------------------------------
-
-app.include_router(
-    data_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    analysis_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    model_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    explain_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    forecast_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    scenario_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    insight_router,
-    prefix=settings.API_PREFIX
-)
-
-app.include_router(
-    monitoring_router,
-    prefix=settings.API_PREFIX
-)
+app.include_router(data_router, prefix=settings.API_PREFIX)
+app.include_router(analysis_router, prefix=settings.API_PREFIX)
+app.include_router(model_router, prefix=settings.API_PREFIX)
+app.include_router(explain_router, prefix=settings.API_PREFIX)
+app.include_router(forecast_router, prefix=settings.API_PREFIX)
+app.include_router(scenario_router, prefix=settings.API_PREFIX)
+app.include_router(insight_router, prefix=settings.API_PREFIX)
+app.include_router(monitoring_router, prefix=settings.API_PREFIX)
 
 
-# --------------------------------------------------
 # Root endpoint
-# --------------------------------------------------
-
 @app.get("/")
 def root():
 
@@ -212,10 +145,7 @@ def root():
     }
 
 
-# --------------------------------------------------
-# Health check endpoint
-# --------------------------------------------------
-
+# Health endpoint
 @app.get("/api/health")
 def health_check():
 
@@ -230,10 +160,7 @@ def health_check():
     }
 
 
-# --------------------------------------------------
-# Local development server
-# --------------------------------------------------
-
+# Local development
 if __name__ == "__main__":
 
     import uvicorn
