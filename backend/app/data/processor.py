@@ -285,168 +285,280 @@ class DataProcessor:
             "deductions": deductions
         }
 
-    def register_uploaded_csv(self, filename: str, content_bytes: bytes) -> Dict[str, Any]:
-        """Safely saves and analyzes an uploaded CSV file."""
-        if len(content_bytes) > 100 * 1024 * 1024:
-            raise ValueError("File size exceeds maximum permitted limit (100MB).")
-            
-        # Path sanitation
-        safe_base = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', Path(filename).name)
+    def register_uploaded_csv_path(
+        self,
+        filename: str,
+        saved_path: Path,
+        file_size: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Registers a CSV that has already been streamed to disk by the API.
+
+        The file is parsed and validated once, then stored in the dataset
+        registry. Model training is deliberately not started during upload:
+        that work can take much longer than the HTTP request timeout.
+        """
+        saved_path = Path(saved_path)
+
+        if not saved_path.exists() or not saved_path.is_file():
+            raise FileNotFoundError(f"Uploaded CSV was not found: {saved_path}")
+
+        actual_size = saved_path.stat().st_size
+        if actual_size == 0:
+            raise ValueError("The uploaded CSV file is empty.")
+
+        if file_size is not None and int(file_size) != actual_size:
+            raise ValueError("Uploaded file size does not match the saved file.")
+
+        # Enforce the processor-level limit as a second safety check.
+        max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "250"))
+        if actual_size > max_upload_mb * 1024 * 1024:
+            raise ValueError(
+                f"File size exceeds the maximum permitted limit ({max_upload_mb} MB)."
+            )
+
+        safe_base = re.sub(
+            r"[^a-zA-Z0-9_\-\.]",
+            "_",
+            Path(filename).name
+        )
         if not safe_base.lower().endswith(".csv"):
             raise ValueError("Only CSV files (.csv) are supported.")
-            
-        dataset_id = f"ds_{int(datetime.datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
-        saved_filename = f"{dataset_id}_{safe_base}"
-        saved_path = self.uploads_dir / saved_filename
-        
-        with open(saved_path, "wb") as f:
-            f.write(content_bytes)
-            
-        # Parse dataframe
-        df = self._read_csv_safe(saved_path)
-        
-        # Auto-detect column mapping
+
+        # The API creates paths as ds_<12-char-id>_<filename>.
+        # Reuse that ID so the uploaded file and registry stay consistent.
+        name_parts = saved_path.name.split("_", 2)
+        if len(name_parts) >= 3 and name_parts[0] == "ds":
+            dataset_id = f"{name_parts[0]}_{name_parts[1]}"
+        else:
+            dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+
+        canonical_path = self.uploads_dir / f"{dataset_id}_{safe_base}"
+
+        # Keep the stored file name sanitized and inside uploads_dir.
+        if saved_path.resolve() != canonical_path.resolve():
+            if canonical_path.exists() and canonical_path.resolve() != saved_path.resolve():
+                raise ValueError("A dataset with this upload identifier already exists.")
+            saved_path.replace(canonical_path)
+
+        # Parse and validate the CSV.
+        df = self._read_csv_safe(canonical_path)
+        if df.empty:
+            raise ValueError("The uploaded CSV contains no data rows.")
+        if len(df.columns) == 0:
+            raise ValueError("The uploaded CSV does not contain any usable columns.")
+
         detected_mapping = self.auto_detect_mapping(list(df.columns))
-        
-        # Calculate quality
-        quality_breakdown = self.calculate_quality_breakdown(df, detected_mapping)
-        
-        # Save in registry
+        quality_breakdown = self.calculate_quality_breakdown(
+            df,
+            detected_mapping
+        )
+
         entry = {
             "id": dataset_id,
             "filename": safe_base,
-            "path": saved_path,
+            "path": canonical_path,
             "uploaded_at": datetime.datetime.now().isoformat(),
-            "size_bytes": len(content_bytes),
+            "size_bytes": actual_size,
             "mapping": detected_mapping,
             "df": df,
             "quality": quality_breakdown
         }
+
         self._datasets[dataset_id] = entry
-        
-        # Activate newly uploaded dataset
+
+        # Activate without training models inside the upload request.
         self.activate_dataset(dataset_id)
-        
+
         summary = self.get_summary()
-        sample_records = df.head(15).fillna("").to_dict(orient="records")
-        
+        sample_records = (
+            df.head(15)
+            .fillna("")
+            .to_dict(orient="records")
+        )
+
         return {
             "dataset_id": dataset_id,
             "filename": safe_base,
             "total_rows": len(df),
             "total_cols": len(df.columns),
-            "file_size_bytes": len(content_bytes),
+            "file_size_bytes": actual_size,
             "columns": list(df.columns),
             "detected_mapping": detected_mapping,
             "quality": quality_breakdown,
             "sample_records": sample_records,
             "summary": summary,
-            "message": f"Dataset '{safe_base}' successfully uploaded, validated ({len(df):,} rows), and activated."
+            "message": (
+                f"Dataset '{safe_base}' successfully uploaded and validated "
+                f"({len(df):,} rows). It is now active. Model training can be "
+                "started separately."
+            )
         }
 
+    def register_uploaded_csv(self, filename: str, content_bytes: bytes) -> Dict[str, Any]:
+        """
+        Backward-compatible helper for callers that still provide file bytes.
+        New API uploads should use register_uploaded_csv_path() instead.
+        """
+        max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "250"))
+        if len(content_bytes) > max_upload_mb * 1024 * 1024:
+            raise ValueError(
+                f"File size exceeds the maximum permitted limit ({max_upload_mb} MB)."
+            )
+
+        safe_base = re.sub(
+            r"[^a-zA-Z0-9_\-\.]",
+            "_",
+            Path(filename).name
+        )
+        if not safe_base.lower().endswith(".csv"):
+            raise ValueError("Only CSV files (.csv) are supported.")
+
+        dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+        saved_path = self.uploads_dir / f"{dataset_id}_{safe_base}"
+
+        with open(saved_path, "wb") as output:
+            output.write(content_bytes)
+
+        try:
+            return self.register_uploaded_csv_path(
+                filename=safe_base,
+                saved_path=saved_path,
+                file_size=len(content_bytes)
+            )
+        except Exception:
+            if saved_path.exists():
+                saved_path.unlink(missing_ok=True)
+            raise
+
     def list_datasets(self) -> Dict[str, Any]:
-        """Lists all registered datasets."""
+        """Lists all registered datasets without failing on one unreadable file."""
         result = []
+
         for d_id, meta in self._datasets.items():
-            path = meta["path"]
+            path = Path(meta["path"])
             if not path.exists():
                 continue
-                
+
+            df = meta.get("df")
             try:
-                df = meta["df"] if meta["df"] is not None else self._read_csv_safe(path)
-                meta["df"] = df
+                if df is None:
+                    df = self._read_csv_safe(path)
+                    meta["df"] = df
+
                 total_rows = len(df)
                 total_cols = len(df.columns)
                 cols = list(df.columns)
-            except:
+
+                q = meta.get("quality")
+                if not q:
+                    q = self.calculate_quality_breakdown(
+                        df,
+                        meta.get("mapping")
+                    )
+                    meta["quality"] = q
+
+            except Exception:
                 total_rows = 0
                 total_cols = 0
                 cols = []
-                
-            q = meta.get("quality") or self.calculate_quality_breakdown(df, meta.get("mapping"))
+                q = meta.get("quality") or {
+                    "score": 0,
+                    "rating": "Unavailable"
+                }
+
             mapping = meta.get("mapping", {})
-            has_target = bool(mapping.get("target_column") and mapping["target_column"] in cols)
-            has_temporal = bool(mapping.get("date_column") and mapping["date_column"] in cols)
-            
+            has_target = bool(
+                mapping.get("target_column")
+                and mapping["target_column"] in cols
+            )
+            has_temporal = bool(
+                mapping.get("date_column")
+                and mapping["date_column"] in cols
+            )
+
             result.append({
                 "id": d_id,
                 "filename": meta["filename"],
-                "is_active": (d_id == self.active_dataset_id),
+                "is_active": d_id == self.active_dataset_id,
                 "total_rows": total_rows,
                 "total_cols": total_cols,
                 "file_size_bytes": meta.get("size_bytes", 0),
                 "uploaded_at": meta.get("uploaded_at", ""),
-                "quality_score": q["score"],
-                "quality_rating": q["rating"],
+                "quality_score": q.get("score", 0),
+                "quality_rating": q.get("rating", "Unavailable"),
                 "columns": cols,
                 "mapping": mapping,
                 "has_target": has_target,
                 "has_temporal": has_temporal
             })
-            
+
         return {
             "active_dataset_id": self.active_dataset_id,
             "datasets": result
         }
 
     def activate_dataset(self, dataset_id: str) -> Dict[str, Any]:
-        """Switches the active dataset and flushes downstream caches."""
+        """
+        Switches the active dataset and clears downstream caches.
+
+        Important: this method does not train ML models. Training is a
+        separate, potentially long-running operation and must not block
+        dataset upload or activation HTTP requests.
+        """
         if dataset_id not in self._datasets:
             raise ValueError(f"Dataset ID '{dataset_id}' not found.")
-            
+
         target_meta = self._datasets[dataset_id]
-        if not target_meta["path"].exists():
-            raise FileNotFoundError(f"Underlying file for dataset '{dataset_id}' was not found on disk.")
-            
+        target_path = Path(target_meta["path"])
+
+        if not target_path.exists():
+            raise FileNotFoundError(
+                f"Underlying file for dataset '{dataset_id}' was not found on disk."
+            )
+
         self.active_dataset_id = dataset_id
-        if target_meta["df"] is None:
-            target_meta["df"] = self._read_csv_safe(target_meta["path"])
+
+        if target_meta.get("df") is None:
+            target_meta["df"] = self._read_csv_safe(target_path)
+
         self._df = target_meta["df"]
-        
-        # Flush forecaster & explainer caches
+
+        # Clear caches associated with the previous active dataset.
         try:
             from app.forecasting.time_series import forecaster
             from app.explainability.shap_explainer import explainer
+
             forecaster._daily_cache = None
             explainer._global_cache.clear()
-        except:
+        except Exception:
+            # Cache modules may not be initialized yet.
             pass
-            
-        # Train baseline models for new dataset if target is present and sufficient sample size
-        try:
-            from app.ml.trainer import trainer
-            if self.has_valid_target() and len(self.get_dataframe()) >= 50:
-                trainer._trained_models.clear()
-                trainer._comparison_results.clear()
-                trainer.train_and_evaluate_all(split_type="random", test_size=0.20)
-        except Exception as e:
-            # Non-blocking if ML baseline train encounters an issue
-            pass
-            
+
         return self.get_summary()
 
-    def update_column_mapping(self, dataset_id: str, new_mapping: Dict[str, Optional[str]]) -> Dict[str, Any]:
-        """Updates column mappings for a specific dataset."""
+    def update_column_mapping(
+        self,
+        dataset_id: str,
+        new_mapping: Dict[str, Optional[str]]
+    ) -> Dict[str, Any]:
+        """Updates column mappings and clears dependent caches without training."""
         if dataset_id not in self._datasets:
             raise ValueError(f"Dataset '{dataset_id}' does not exist.")
-            
+
         self._datasets[dataset_id]["mapping"] = new_mapping
-        
-        # If this is the active dataset, flush caches and retrain models if applicable
+        self._datasets[dataset_id]["quality"] = None
+
         if dataset_id == self.active_dataset_id:
             try:
                 from app.forecasting.time_series import forecaster
                 from app.explainability.shap_explainer import explainer
-                from app.ml.trainer import trainer
+
                 forecaster._daily_cache = None
                 explainer._global_cache.clear()
-                trainer._trained_models.clear()
-                trainer._comparison_results.clear()
-                if self.has_valid_target() and len(self.get_dataframe()) >= 50:
-                    trainer.train_and_evaluate_all(split_type="random", test_size=0.20)
-            except:
+            except Exception:
                 pass
-                
+
         return {
             "status": "success",
             "dataset_id": dataset_id,
