@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+backend/venv/
+*.sqlite3
+*.db
+.env
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ML artifacts
+backend/models/*.joblib
+!backend/models/.gitkeep
+
+# Exports & temp
+exports/*
+!exports/.gitkeep
